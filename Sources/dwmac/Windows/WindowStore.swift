@@ -88,4 +88,12 @@ final class WindowStore {
         for id in victims { remove(id: id) }
         return victims
     }
+
+    /// Wipe the entire store. Used by `Engine.reloadConfig` to do a
+    /// clean reset before re-enumerating windows.
+    func clearAll() {
+        adapters.removeAll()
+        states.removeAll()
+        byElement.removeAll()
+    }
 }

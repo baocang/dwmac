@@ -706,23 +706,45 @@ final class Engine {
         _ = a.close()
     }
 
-    /// Re-read `~/.config/dwmac/config.json`, replace the live config,
-    /// re-enumerate every running app's windows (so windows that were
-    /// previously rejected by `ignoreBundleIDs` get picked up now that
-    /// the list changed), and re-tile every screen.  Most fields apply
-    /// immediately (fractions, gaps, float/ignore lists, log level,
-    /// aspect threshold). The modifier key still requires an agent
-    /// restart because hotkeys are wired once at boot.
+    /// Re-read `~/.config/dwmac/config.json` and rebuild the live state
+    /// from scratch — the in-process equivalent of `launchctl kickstart`.
+    /// This is the only way to make changes to `floatBundleIDs` /
+    /// `ignoreBundleIDs` actually re-classify already-tracked windows
+    /// and to recover from any stale AX observer.
+    ///
+    /// What gets reset:
+    ///   - `config` (new values from disk)
+    ///   - all `screens[…]` slot/pool/float assignments
+    ///   - the entire `WindowStore` (window IDs are reissued)
+    ///   - all AX observers (detached then re-attached fresh)
+    ///   - `armed`, `lastFocused`, `pendingMoves`
+    ///
+    /// What does NOT get reset:
+    ///   - the registered hotkey bindings (a modifier change still
+    ///     requires `launchctl kickstart -k gui/$UID/com.dwmac.agent`).
     func reloadConfig() {
         let new = Config.loadOrCreate()
         self.config = new
         Log.level = new.logLevel
         Log.info("config reloaded: left=\(new.leftFraction) center=\(new.centerFraction) right=\(new.rightFraction) outerGap=\(new.outerGap) innerGap=\(new.innerGap) wideMinAspect=\(new.wideMinAspectRatio)")
-        // Recompute every screen's layout mode in case wideMinAspectRatio changed.
+
+        // Tear down all per-run state. The hotkeys stay registered.
+        observer.stop()
+        store.clearAll()
+        for s in screens.values {
+            for ws in s.slotsByWorkspace.keys {
+                s.slotsByWorkspace[ws] = SlotLayout()
+            }
+        }
+        armed = nil
+        armedExpiry?.cancel()
+        armedExpiry = nil
+        pendingMoves.values.forEach { $0.cancel() }
+        pendingMoves.removeAll()
+
+        // Re-bootstrap (same sequence as `Engine.bootstrap`).
         rebuildScreens()
-        // Pick up windows that became newly manageable (e.g. removed from
-        // `ignoreBundleIDs`). `store.add` deduplicates, so already-tracked
-        // windows are a no-op.
+        observer.start()
         observer.enumerateAllExistingWindows { [weak self] win, pid, bundle in
             self?.handleAppearance(element: win, pid: pid, bundleID: bundle, initial: true)
         }
