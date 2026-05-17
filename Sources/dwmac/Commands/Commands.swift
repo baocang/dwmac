@@ -6,7 +6,20 @@ enum Commands {
 
     static func registerAll(engine: Engine, config: Config) {
         let mods = carbonMask(from: config.modifier)
-        let modsShift = mods | CarbonModifier.shift
+        // "Shift-variant" hotkeys (send-to-monitor, send-to-workspace,
+        // close, dump, quit) normally use Mod+Shift. But if the
+        // configured modifier already includes Shift, Mod+Shift+X
+        // collapses to the same combo as Mod+X and the registration
+        // gets refused as a duplicate. In that case fall back to
+        // Mod+Option for the variant — orthogonal to Mod+X and orthogonal
+        // to the configured modifier set.
+        let modsShift: UInt32
+        if config.modifier.contains(.shift) {
+            modsShift = mods | CarbonModifier.option
+            Log.info("Mod already includes Shift; shift-variant hotkeys are remapped to Mod+Option")
+        } else {
+            modsShift = mods | CarbonModifier.shift
+        }
 
         let mgr = HotkeyManager.shared
         mgr.installEventHandler()
