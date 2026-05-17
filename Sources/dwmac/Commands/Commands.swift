@@ -39,8 +39,11 @@ enum Commands {
         // takes the entire visible frame. Pressing again exits fullscreen.
         mgr.register(keyCode: VKey.return,       modifierMask: mods) { engine.armFullscreen() }
 
-        // Re-tile / toggles.
-        mgr.register(keyCode: VKey.r, modifierMask: mods) { engine.reTile() }
+        // Reload + re-tile.  Mod+R is the "refresh" key: it re-reads the
+        // config file from disk and re-applies the layout to every
+        // screen, so a config edit followed by Mod+R is everything
+        // needed (no separate retile-only binding).
+        mgr.register(keyCode: VKey.r, modifierMask: mods) { engine.reloadConfig() }
         mgr.register(keyCode: VKey.t, modifierMask: mods) { engine.toggleTiling() }
         mgr.register(keyCode: VKey.f, modifierMask: mods) { engine.toggleFloatingFocused() }
 

@@ -12,7 +12,10 @@ enum ArmKind {
 /// The central coordinator. Owns the window store, screen states, the observer,
 /// and all higher-level operations invoked by Commands.
 final class Engine {
-    let config: Config
+    /// Live config. Mutable so `reloadConfig` can replace it without a
+    /// LaunchAgent restart. Modifier changes still require restarting
+    /// the agent since hotkeys are registered once at boot.
+    private(set) var config: Config
     let store = WindowStore()
     let observer = WindowObserver()
     private(set) var screens: [CGDirectDisplayID: ScreenState] = [:]
@@ -700,6 +703,29 @@ final class Engine {
     func closeFocused() {
         guard let id = focusedWindowID(), let a = store.adapter(id) else { return }
         _ = a.close()
+    }
+
+    /// Re-read `~/.config/dwmac/config.json`, replace the live config,
+    /// re-enumerate every running app's windows (so windows that were
+    /// previously rejected by `ignoreBundleIDs` get picked up now that
+    /// the list changed), and re-tile every screen.  Most fields apply
+    /// immediately (fractions, gaps, float/ignore lists, log level,
+    /// aspect threshold). The modifier key still requires an agent
+    /// restart because hotkeys are wired once at boot.
+    func reloadConfig() {
+        let new = Config.loadOrCreate()
+        self.config = new
+        Log.level = new.logLevel
+        Log.info("config reloaded: left=\(new.leftFraction) center=\(new.centerFraction) right=\(new.rightFraction) outerGap=\(new.outerGap) innerGap=\(new.innerGap) wideMinAspect=\(new.wideMinAspectRatio)")
+        // Recompute every screen's layout mode in case wideMinAspectRatio changed.
+        rebuildScreens()
+        // Pick up windows that became newly manageable (e.g. removed from
+        // `ignoreBundleIDs`). `store.add` deduplicates, so already-tracked
+        // windows are a no-op.
+        observer.enumerateAllExistingWindows { [weak self] win, pid, bundle in
+            self?.handleAppearance(element: win, pid: pid, bundleID: bundle, initial: true)
+        }
+        tileAll()
     }
 
     func dumpDiagnostics() {
