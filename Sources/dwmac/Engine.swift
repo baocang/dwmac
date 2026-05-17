@@ -747,7 +747,8 @@ final class Engine {
 
         let currentSlot = slots.slotOf(id)
         if currentSlot != targetSlot || newDisplay != oldDisplay {
-            newState.mutateSlots(ws) { $0.place(id, in: targetSlot) }
+            // Slot-to-slot drags SWAP; pool-to-slot drags displace into pool.
+            newState.mutateSlots(ws) { $0.moveOrSwap(id, into: targetSlot) }
         }
 
         // Always re-tile so the window snaps back to its full slot rect,

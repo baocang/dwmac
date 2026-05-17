@@ -142,5 +142,55 @@ final class LayoutTests: XCTestCase {
         slots.remove(a)
         XCTAssertNil(slots.fullscreen)
     }
+
+    /// Drag from one occupied slot to another → swap. The previous occupant
+    /// of the target moves to the dragged window's old slot, not the pool.
+    func testMoveOrSwap_slotToSlot_swaps() {
+        var slots = SlotLayout()
+        let a = WindowID(value: 1)
+        let b = WindowID(value: 2)
+        slots.place(a, in: .left)
+        slots.place(b, in: .right)
+        slots.moveOrSwap(a, into: .right)
+        XCTAssertEqual(slots.right, a)
+        XCTAssertEqual(slots.left, b)
+        XCTAssertTrue(slots.hiddenPool.isEmpty)
+    }
+
+    /// Drag from an occupied slot to an empty slot → move (target's
+    /// previous occupant is nil, so the source slot becomes empty).
+    func testMoveOrSwap_slotToEmpty_moves() {
+        var slots = SlotLayout()
+        let a = WindowID(value: 1)
+        slots.place(a, in: .left)
+        slots.moveOrSwap(a, into: .center)
+        XCTAssertEqual(slots.center, a)
+        XCTAssertNil(slots.left)
+        XCTAssertTrue(slots.hiddenPool.isEmpty)
+    }
+
+    /// Drag from the hidden pool into a slot → existing slot occupant
+    /// displaces into the pool (no swap target exists).
+    func testMoveOrSwap_poolToSlot_displacesToPool() {
+        var slots = SlotLayout()
+        let a = WindowID(value: 1)
+        let b = WindowID(value: 2)
+        slots.place(a, in: .left)
+        slots.hiddenPool.append(b)
+        slots.moveOrSwap(b, into: .left)
+        XCTAssertEqual(slots.left, b)
+        XCTAssertTrue(slots.hiddenPool.contains(a))
+        XCTAssertFalse(slots.hiddenPool.contains(b))
+    }
+
+    /// Moving a window into its own slot is a no-op.
+    func testMoveOrSwap_sameSlot_noop() {
+        var slots = SlotLayout()
+        let a = WindowID(value: 1)
+        slots.place(a, in: .center)
+        slots.moveOrSwap(a, into: .center)
+        XCTAssertEqual(slots.center, a)
+        XCTAssertTrue(slots.hiddenPool.isEmpty)
+    }
 }
 #endif

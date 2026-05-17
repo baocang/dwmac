@@ -47,6 +47,22 @@ struct SlotLayout {
         return displaced
     }
 
+    /// Move `id` into `slot`. If `id` currently occupies a different slot,
+    /// SWAP it with whatever's in `slot` (the previous occupant of the
+    /// target slot moves to `id`'s old slot). If `id` is in the hidden pool
+    /// or unknown, falls back to `place` (which displaces the target's
+    /// occupant into the pool).
+    mutating func moveOrSwap(_ id: WindowID, into slot: Slot) {
+        if self[slot] == id { return }
+        if let from = slotOf(id) {
+            let other = self[slot]
+            self[slot] = id
+            self[from] = other
+            return
+        }
+        place(id, in: slot)
+    }
+
     /// Find which slot currently holds `id`, if any.
     func slotOf(_ id: WindowID) -> Slot? {
         for s in Slot.allCases where self[s] == id { return s }
