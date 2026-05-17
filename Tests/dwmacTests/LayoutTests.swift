@@ -7,7 +7,8 @@ final class LayoutTests: XCTestCase {
     private let params = Layout.Params(leftFraction: 0.33,
                                        centerFraction: 0.50,
                                        rightFraction: 0.33,
-                                       outerGap: 8)
+                                       outerGap: 8,
+                                       innerGap: 0)
 
     func testZonesBasic() {
         let vf = CGRect(x: 0, y: 0, width: 1000, height: 800)
@@ -107,13 +108,34 @@ final class LayoutTests: XCTestCase {
         let p = Layout.Params(leftFraction: 0.20,
                               centerFraction: 0.50,
                               rightFraction: 0.40,
-                              outerGap: 8)
+                              outerGap: 8,
+                              innerGap: 0)
         let plan = Layout.compute(axVisibleFrame: vf, params: p)
         // usable.width = 984. left = floor(984*0.2) = 196. right = floor(984*0.4) = 393.
         XCTAssertEqual(plan.leftZone.width, 196)
         XCTAssertEqual(plan.rightZone.width, 393)
         XCTAssertEqual(plan.leftZone.minX, 8)
         XCTAssertEqual(plan.rightZone.maxX, 992)
+    }
+
+    /// With innerGap > 0 the center pane shrinks by 2 × innerGap so that
+    /// there is a visible gap between adjacent panes even when fractions
+    /// sum to exactly 1.0.
+    func testInnerGapBetweenPanes() {
+        let vf = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let p = Layout.Params(leftFraction: 0.25,
+                              centerFraction: 0.50,
+                              rightFraction: 0.25,
+                              outerGap: 8,
+                              innerGap: 8)
+        let plan = Layout.compute(axVisibleFrame: vf, params: p)
+        // usable.width = 984. leftW = 246. centerW_raw = 492, centerW = 476.
+        XCTAssertEqual(plan.leftZone.maxX, 254)
+        XCTAssertEqual(plan.centerZone.minX, 262)
+        XCTAssertEqual(plan.centerZone.minX - plan.leftZone.maxX, 8)
+        XCTAssertEqual(plan.centerZone.maxX, 738)
+        XCTAssertEqual(plan.rightZone.minX, 746)
+        XCTAssertEqual(plan.rightZone.minX - plan.centerZone.maxX, 8)
     }
 
     func testFloatsTrackSeparately() {

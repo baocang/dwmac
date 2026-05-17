@@ -314,7 +314,8 @@ final class Engine {
         let params = Layout.Params(leftFraction:   config.leftFraction,
                                    centerFraction: config.centerFraction,
                                    rightFraction:  config.rightFraction,
-                                   outerGap:       config.outerGap)
+                                   outerGap:       config.outerGap,
+                                   innerGap:       config.innerGap)
         let plan = Layout.compute(axVisibleFrame: vf, params: params)
 
         beginSuppressionWindow()
@@ -800,7 +801,8 @@ final class Engine {
         let params = Layout.Params(leftFraction:   config.leftFraction,
                                    centerFraction: config.centerFraction,
                                    rightFraction:  config.rightFraction,
-                                   outerGap:       config.outerGap)
+                                   outerGap:       config.outerGap,
+                                   innerGap:       config.innerGap)
         let plan = Layout.compute(axVisibleFrame: vf, params: params)
         let targetSlot = SlotLayout.slotForPoint(centerPt, plan: plan)
 

@@ -131,6 +131,12 @@ enum Layout {
         var centerFraction: Double
         var rightFraction: Double
         var outerGap: Double
+        /// Minimum gap reserved between adjacent panes.  When the three
+        /// fractions add to ≤ 1.0 the gap is visible; when they add to
+        /// more than 1.0 the panes overlap and the gap is absorbed into
+        /// the overlap (the gap is still conceptually there, just hidden
+        /// behind the larger pane).
+        var innerGap: Double
     }
 
     struct Computed {
@@ -141,16 +147,20 @@ enum Layout {
 
     static func compute(axVisibleFrame vf: CGRect, params: Params) -> Computed {
         let outer = params.outerGap
+        let inner = params.innerGap
         let usable = CGRect(x: vf.origin.x + outer,
                             y: vf.origin.y + outer,
                             width:  max(0, vf.width  - 2*outer),
                             height: max(0, vf.height - 2*outer))
 
-        let leftW   = floor(usable.width * params.leftFraction)
-        let centerW = floor(usable.width * params.centerFraction)
-        let rightW  = floor(usable.width * params.rightFraction)
-        // Center is centered on the usable area; left/right anchor to the
-        // outer edges. Their inner edges may overlap the center.
+        let leftW      = floor(usable.width * params.leftFraction)
+        let centerWRaw = floor(usable.width * params.centerFraction)
+        let rightW     = floor(usable.width * params.rightFraction)
+        // Shrink the center pane by `innerGap` on each side so there's
+        // always a gap between center and the side panes. The center
+        // stays horizontally centered in the usable area; side panes
+        // keep their fraction widths and anchor to the outer edges.
+        let centerW = max(0, centerWRaw - 2 * inner)
         let centerX = usable.origin.x + floor((usable.width - centerW) / 2)
 
         let left   = CGRect(x: usable.origin.x,
