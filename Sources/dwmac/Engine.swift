@@ -54,15 +54,19 @@ final class Engine {
         observer.stop()
     }
 
-    /// Whether the engine should tile on the given screen.
-    private func shouldManage(_ screen: NSScreen) -> Bool {
-        if !config.manageBuiltin && ScreenSpace.isBuiltin(screen) { return false }
-        if config.wideAspectFilter {
-            let f = screen.frame
-            let ratio = f.width / max(1, f.height)
-            if ratio < config.wideMinAspectRatio { return false }
-        }
-        return true
+    /// Every screen is managed by dwmac. The layout differs per screen
+    /// (three-pane on wide screens, monocle on everything else).
+    private func shouldManage(_ screen: NSScreen) -> Bool { true }
+
+    /// Layout used on a particular screen. Built-in displays and any
+    /// external display with an aspect ratio below `wideMinAspectRatio`
+    /// get monocle (single window full visible-frame, others centered
+    /// behind). Wide external displays get the three-pane layout.
+    private func layoutMode(for screen: NSScreen) -> LayoutMode {
+        if ScreenSpace.isBuiltin(screen) { return .monocle }
+        let f = screen.frame
+        let aspect = f.width / max(1, f.height)
+        return aspect >= config.wideMinAspectRatio ? .threePane : .monocle
     }
 
     private func rebuildScreens() {
@@ -77,6 +81,13 @@ final class Engine {
                                           tilingEnabled: shouldManage(screen),
                                           workspaceCount: config.workspaceCount)
             }
+            // One-line summary so we can see the layout mode dwmac picked
+            // for each connected screen.
+            let f = screen.frame
+            let aspect = f.width / max(1, f.height)
+            let builtin = ScreenSpace.isBuiltin(screen)
+            let mode = layoutMode(for: screen)
+            Log.info("screen display=\(id) size=\(Int(f.width))×\(Int(f.height)) aspect=\(String(format: "%.2f", aspect)) builtin=\(builtin) layout=\(mode)")
         }
         for stale in screens.keys where !seen.contains(stale) {
             screens.removeValue(forKey: stale)
@@ -168,60 +179,67 @@ final class Engine {
         if !initial { tile(screenState: screenState) }
     }
 
-    private func isManageable(element: AXUIElement, pid: pid_t, bundleID: String?) -> Bool {
-        if let bid = bundleID, config.ignoreBundleIDs.contains(bid) { return false }
-        var roleVal: CFTypeRef?
-        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleVal)
-        let role = roleVal as? String
-        // Only honest top-level windows. Skip menus, sheets, popovers,
-        // tooltips, drawers etc. that some apps surface in AXWindows.
-        guard role == kAXWindowRole as String else { return false }
-        return true
-    }
-
-    /// Bundle IDs and subroles that we cannot reliably tile (transient menus,
-    /// dropdowns, picker UIs).  These come from third-party apps that surface
-    /// auxiliary UI elements as separate AXWindows.
-    private static let neverTileSubroles: Set<String> = [
-        kAXDialogSubrole as String,
-        kAXSystemDialogSubrole as String,
-        kAXFloatingWindowSubrole as String,
-        kAXSystemFloatingWindowSubrole as String,
+    /// Subroles that mean "this isn't a real top-level window" — dwmac
+    /// will not track or move these at all.
+    private static let unmanagedSubroles: Set<String> = [
+        kAXDialogSubrole as String,                // "AXDialog"
+        kAXSystemDialogSubrole as String,          // "AXSystemDialog"
+        kAXFloatingWindowSubrole as String,        // "AXFloatingWindow"
+        kAXSystemFloatingWindowSubrole as String,  // "AXSystemFloatingWindow"
         "AXSheet",
         "AXUnknown"   // many transient pickers report "AXUnknown"
     ]
 
-    private func shouldFloatByDefault(bundleID: String?, frame: CGRect, element: AXUIElement) -> Bool {
-        if let bid = bundleID, config.floatBundleIDs.contains(bid) { return true }
-        // Anything smaller than 200x200 is almost certainly a popup.
-        if frame.width < 200 || frame.height < 200 { return true }
+    /// `isManageable` is the hard filter: anything it rejects is not added
+    /// to the store at all.  We reject only things that are reliably **not**
+    /// real top-level windows: wrong AX role, dialog/sheet/floating
+    /// subroles, and explicitly modal windows. Bundle-level exclusion is
+    /// expressed via `floatBundleIDs` and `ignoreBundleIDs` and decided
+    /// per-screen in `shouldFloatByDefault`.
+    private func isManageable(element: AXUIElement, pid: pid_t, bundleID: String?) -> Bool {
+        var roleVal: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleVal)
+        let role = roleVal as? String
+        // Only honest top-level windows. Menus, tooltips etc. use other roles.
+        guard role == kAXWindowRole as String else { return false }
 
-        // Subrole-based skip list.
+        // Reject dialogs / sheets / floating panels via subrole.
         var subVal: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subVal)
-        if let sub = subVal as? String, Engine.neverTileSubroles.contains(sub) { return true }
+        if let sub = subVal as? String, Engine.unmanagedSubroles.contains(sub) { return false }
 
-        // Modal windows — sheets, "Save changes?" dialogs etc.
+        // Reject modal windows ("Save changes?" etc.).
         var modalVal: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXModalAttribute as CFString, &modalVal)
-        if let modal = modalVal as? Bool, modal { return true }
+        if let modal = modalVal as? Bool, modal { return false }
 
-        // Windows the app refuses to resize — fixed-size pickers, small panels.
+        // Reject windows whose title is missing or empty. The Finder
+        // desktop wallpaper window is the classic example: AXWindow role,
+        // no subrole, blank title, and it spans every screen. Real
+        // application windows have a non-empty title.
+        var titleRef: CFTypeRef?
+        let titleStatus = AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef)
+        let title = titleRef as? String ?? ""
+        if titleStatus != .success || title.isEmpty { return false }
+
+        return true
+    }
+
+    /// Of the manageable windows, which ones should be tracked but **not
+    /// tiled into a slot**? `floatBundleIDs` AND `ignoreBundleIDs` both
+    /// fall into the float bucket — they're tracked so the monocle layout
+    /// can still center them, but they're skipped when assigning slots on
+    /// wide screens (where they keep their natural position).  Very tiny
+    /// or fixed-size windows are also auto-floated.
+    private func shouldFloatByDefault(bundleID: String?, frame: CGRect, element: AXUIElement) -> Bool {
+        if let bid = bundleID {
+            if config.floatBundleIDs.contains(bid)  { return true }
+            if config.ignoreBundleIDs.contains(bid) { return true }
+        }
+        if frame.width < 200 || frame.height < 200 { return true }
         var settable: DarwinBoolean = false
         AXUIElementIsAttributeSettable(element, kAXSizeAttribute as CFString, &settable)
         if !settable.boolValue { return true }
-
-        // Windows without a title bar are typically transient (menus, popovers
-        // disguised as windows). Probe by asking for the title attribute and
-        // treating a missing/empty value combined with no close button as a
-        // popup.
-        var closeButton: CFTypeRef?
-        let closeStatus = AXUIElementCopyAttributeValue(element, kAXCloseButtonAttribute as CFString, &closeButton)
-        if closeStatus != .success {
-            // No close button — almost certainly not a normal window.
-            return true
-        }
-
         return false
     }
 
@@ -249,7 +267,8 @@ final class Engine {
         tile(screenState: s)
     }
 
-    /// Compute and apply the three-pane layout for one screen.
+    /// Compute and apply the layout for one screen. The layout differs by
+    /// screen: wide externals use three-pane, everything else uses monocle.
     func tile(screenState s: ScreenState) {
         guard let screen = NSScreen.screens.first(where: { ScreenSpace.displayID($0) == s.displayID }) else { return }
 
@@ -267,12 +286,10 @@ final class Engine {
         // Fullscreen short-circuit: park everything except the fullscreen window.
         if let fs = s.currentSlots.fullscreen {
             beginSuppressionWindow()
-            // Apply the fullscreen window to the full visible frame.
             if let a = store.adapter(fs) {
                 a.setFrame(vf)
                 store.mutateState(fs) { $0.lastTiledFrame = vf }
             }
-            // Park the rest.
             let slots = s.currentSlots
             for id in [slots.left, slots.center, slots.right].compactMap({ $0 }) where id != fs {
                 park(id: id)
@@ -282,6 +299,15 @@ final class Engine {
             return
         }
 
+        let mode = layoutMode(for: screen)
+        switch mode {
+        case .monocle:   tileMonocle(state: s, visibleFrame: vf)
+        case .threePane: tileThreePane(state: s, visibleFrame: vf)
+        }
+    }
+
+    /// Three-pane: left / center / right with overlap.
+    private func tileThreePane(state s: ScreenState, visibleFrame vf: CGRect) {
         // Auto-fill empty slots from the hidden pool (FIFO).
         refillEmptySlots(state: s)
 
@@ -296,19 +322,46 @@ final class Engine {
         // Hidden-pool windows sit at the center zone, behind the slot windows
         // (z-order is handled by app activation: the focused slot's app is
         // frontmost, so pool windows from other apps are naturally below).
-        // This keeps them out of sight without parking off-screen (where some
-        // apps clamp positive and leave visible slivers).
         for id in slots.hiddenPool {
             applySlot(id, to: plan.centerZone, anchor: .center)
         }
-
-        // Visible slot windows.
         applySlot(slots.left,   to: plan.leftZone,   anchor: .left)
         applySlot(slots.center, to: plan.centerZone, anchor: .center)
         applySlot(slots.right,  to: plan.rightZone,  anchor: .right)
 
-        // Raise the currently focused window so its app becomes frontmost
-        // and the focused slot covers the pool windows behind it.
+        if let fid = focusedWindowID(), let a = store.adapter(fid) {
+            a.focus()
+        }
+    }
+
+    /// Monocle: every managed window — slot, pool, AND float/ignore — is
+    /// centered at the visible frame minus the outer gap. The focused
+    /// window is raised on top; the others stack behind.
+    private func tileMonocle(state s: ScreenState, visibleFrame vf: CGRect) {
+        refillEmptySlots(state: s)
+        beginSuppressionWindow()
+
+        // Shrink the visible frame by `outerGap` so the window doesn't sit
+        // flush against the menu-bar / Dock / screen edges.
+        let outer = config.outerGap
+        let usable = CGRect(x: vf.origin.x + outer,
+                            y: vf.origin.y + outer,
+                            width:  max(0, vf.width  - 2*outer),
+                            height: max(0, vf.height - 2*outer))
+
+        let slots = s.currentSlots
+        // Floats and ignores are normally untouched on wide screens, but
+        // monocle is the "every window centered" mode — apply to them too.
+        for id in slots.floats {
+            applySlot(id, to: usable, anchor: .center)
+        }
+        for id in slots.hiddenPool {
+            applySlot(id, to: usable, anchor: .center)
+        }
+        for id in [slots.left, slots.center, slots.right].compactMap({ $0 }) {
+            applySlot(id, to: usable, anchor: .center)
+        }
+
         if let fid = focusedWindowID(), let a = store.adapter(fid) {
             a.focus()
         }
@@ -342,18 +395,32 @@ final class Engine {
             store.mutateState(id) { $0.lastTiledFrame = rect }
             return
         }
-        // Compute the X position that pins the window's visible edge to the
-        // slot's outer edge regardless of how the app may have stretched.
+        // X is pinned to the slot's outer edge (or centered if the window
+        // fits in the center zone). Y is vertically centered when the
+        // window fits, otherwise top-aligned. Many apps (Finder, iTerm2,
+        // Xcode etc.) refuse to shrink below their natural size; if we
+        // tried to center an oversized window vertically, it would
+        // overflow equally on top and bottom and the outer gap from the
+        // menu bar would visually disappear. Top-aligning when oversized
+        // preserves the visible top gap; the overflow happens at the
+        // bottom (which is offscreen on the built-in display anyway).
         let anchoredX: CGFloat
         switch anchor {
         case .left:   anchoredX = rect.minX
         case .right:  anchoredX = rect.maxX - actual.width
-        case .center: anchoredX = rect.midX - actual.width / 2
+        case .center:
+            anchoredX = actual.width <= rect.width
+                ? rect.midX - actual.width / 2
+                : rect.minX
         }
+        let anchoredY: CGFloat = actual.height <= rect.height
+            ? rect.midY - actual.height / 2
+            : rect.minY
+
         // Only re-write if the app drifted by more than a pixel.
-        if abs(actual.minX - anchoredX) > 1 || abs(actual.minY - rect.minY) > 1 {
+        if abs(actual.minX - anchoredX) > 1 || abs(actual.minY - anchoredY) > 1 {
             let anchored = CGRect(x: anchoredX,
-                                  y: rect.minY,
+                                  y: anchoredY,
                                   width: actual.width,
                                   height: actual.height)
             a.setFrame(anchored)

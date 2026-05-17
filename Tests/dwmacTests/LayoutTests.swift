@@ -192,5 +192,13 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(slots.center, a)
         XCTAssertTrue(slots.hiddenPool.isEmpty)
     }
+
+    func testWideMinAspectRatioClamp() {
+        var c = Config.default
+        c.wideMinAspectRatio = 10  // out of range
+        c = c.validated()
+        XCTAssertLessThanOrEqual(c.wideMinAspectRatio, 6.0)
+        XCTAssertGreaterThanOrEqual(c.wideMinAspectRatio, 1.0)
+    }
 }
 #endif

@@ -1,17 +1,21 @@
 # dwmac
 
 A headless macOS window manager inspired by [dwm](https://dwm.suckless.org/).
-It tiles every window into three overlapping panes — **left · center · right** —
-and is driven entirely by global keyboard shortcuts. Designed for ultrawide
-and external displays; built-in laptop screens are left untouched by default.
+It picks a layout per display:
+
+* **Three-pane** on wide screens (aspect ratio ≥ `wideMinAspectRatio`,
+  default 2.0): left · center · right with overlap.
+* **Monocle** on every other screen (built-in laptop displays and
+  non-wide externals): one window fills the full visible frame, every
+  other window stacks centered behind it.
 
 ```
-external display (built-in is ignored by default):
-┌──────────────────┬──────────────────────────┬──────────────────┐
-│                  │                          │                  │
-│  LEFT  (≈⅓ W)    │     CENTER  (≈½ W)       │   RIGHT (≈⅓ W)   │
-│                  │                          │                  │
-└──────────────────┴──────────────────────────┴──────────────────┘
+wide screen (≥ 2:1):                   non-wide screen / built-in:
+┌──────┬───────────────┬──────┐        ┌────────────────────────┐
+│      │               │      │        │                        │
+│ LEFT │   CENTER      │RIGHT │        │      single window     │
+│      │               │      │        │     full visible frame │
+└──────┴───────────────┴──────┘        └────────────────────────┘
 ```
 
 * Each pane holds **one** window, full height.
@@ -140,9 +144,7 @@ ignored. Choose a modifier that doesn't already include Shift for the full set.
   ],
   "ignoreBundleIDs": [],
   "logLevel": "info",
-  "wideAspectFilter": false,
-  "wideMinAspectRatio": 1.78,
-  "manageBuiltin": false
+  "wideMinAspectRatio": 2.0
 }
 ```
 

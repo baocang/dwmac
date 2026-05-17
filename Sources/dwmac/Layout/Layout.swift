@@ -1,6 +1,22 @@
 import CoreGraphics
 import Foundation
 
+/// Per-screen layout mode. Decided at tile time from the screen's properties.
+enum LayoutMode: CustomStringConvertible {
+    /// Wide screen: left / center / right panes with overlap.
+    case threePane
+    /// Non-wide screen (built-in or aspect < threshold): every window takes
+    /// the full visible frame, centered. Focused window is z-raised on top.
+    case monocle
+
+    var description: String {
+        switch self {
+        case .threePane: return "three-pane"
+        case .monocle:   return "monocle"
+        }
+    }
+}
+
 /// Named slot in the three-pane layout.
 enum Slot: String, CaseIterable, Codable {
     case left, center, right

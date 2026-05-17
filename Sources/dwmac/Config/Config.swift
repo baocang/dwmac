@@ -21,20 +21,17 @@ struct Config: Codable {
     /// Bundle IDs that dwmac ignores entirely — never tracked.
     var ignoreBundleIDs: [String]
     var logLevel: LogLevel
-    /// If true, also disable tiling on screens whose width:height ratio is
-    /// below `wideMinAspectRatio` even when external. Default false.
-    var wideAspectFilter: Bool
-    /// Minimum aspect ratio to consider a display "wide enough" when
-    /// `wideAspectFilter` is true. Default 1.78 (≈16:9).
+    /// Width:height aspect ratio at or above which a screen is considered
+    /// "wide" and gets the three-pane layout. Below this threshold (and on
+    /// built-in displays regardless of aspect), the **monocle** layout is
+    /// used: every window takes the full visible frame, centered.
     var wideMinAspectRatio: Double
-    /// If true, dwmac also tiles built-in (laptop) displays. Default false.
-    var manageBuiltin: Bool
 
     static let `default` = Config(
         modifier: [.control, .command],
         centerFraction: 0.50,
-        sideFraction: 0.33,
-        outerGap: 8,
+        sideFraction: 0.40,
+        outerGap: 16,
         innerGap: 6,
         workspaceCount: 9,
         floatBundleIDs: [
@@ -56,9 +53,7 @@ struct Config: Codable {
         ],
         ignoreBundleIDs: [],
         logLevel: .info,
-        wideAspectFilter: false,
-        wideMinAspectRatio: 1.78,
-        manageBuiltin: false
+        wideMinAspectRatio: 2.0
     )
 
     static func loadOrCreate() -> Config {
@@ -108,7 +103,7 @@ struct Config: Codable {
         c.outerGap = Geometry.clamp(c.outerGap, 0, 64)
         c.innerGap = Geometry.clamp(c.innerGap, 0, 64)
         c.workspaceCount = Geometry.clamp(c.workspaceCount, 1, 9)
-        c.wideMinAspectRatio = Geometry.clamp(c.wideMinAspectRatio, 1.0, 4.0)
+        c.wideMinAspectRatio = Geometry.clamp(c.wideMinAspectRatio, 1.0, 6.0)
         if c.modifier.isEmpty { c.modifier = [.control, .command] }
         return c
     }
@@ -124,8 +119,7 @@ extension Config {
         case workspaceCount
         case floatBundleIDs, ignoreBundleIDs
         case logLevel
-        case wideAspectFilter, wideMinAspectRatio
-        case manageBuiltin
+        case wideMinAspectRatio
     }
 
     init(from decoder: Decoder) throws {
@@ -140,8 +134,6 @@ extension Config {
         floatBundleIDs  = (try? c.decode([String].self, forKey: .floatBundleIDs)) ?? def.floatBundleIDs
         ignoreBundleIDs = (try? c.decode([String].self, forKey: .ignoreBundleIDs)) ?? def.ignoreBundleIDs
         logLevel        = (try? c.decode(LogLevel.self, forKey: .logLevel))       ?? def.logLevel
-        wideAspectFilter   = (try? c.decode(Bool.self, forKey: .wideAspectFilter))    ?? def.wideAspectFilter
         wideMinAspectRatio = (try? c.decode(Double.self, forKey: .wideMinAspectRatio)) ?? def.wideMinAspectRatio
-        manageBuiltin      = (try? c.decode(Bool.self, forKey: .manageBuiltin))       ?? def.manageBuiltin
     }
 }
