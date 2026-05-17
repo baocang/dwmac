@@ -27,3 +27,13 @@ enum Geometry {
         min(max(v, lo), hi)
     }
 }
+
+/// True when two frames are within `tolerance` pixels of each other in
+/// every dimension. Used to distinguish dwmac's own setFrame echoes
+/// from user-initiated moves.
+func framesMatch(_ a: CGRect, _ b: CGRect, tolerance: CGFloat = 1.5) -> Bool {
+    abs(a.minX - b.minX) <= tolerance &&
+    abs(a.minY - b.minY) <= tolerance &&
+    abs(a.width  - b.width)  <= tolerance &&
+    abs(a.height - b.height) <= tolerance
+}

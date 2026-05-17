@@ -28,8 +28,6 @@ final class Engine {
     /// into one action when the drag settles.
     private var pendingMoves: [WindowID: DispatchWorkItem] = [:]
 
-    private var suppressionEnd: Date = .distantPast
-
     init(config: Config) {
         self.config = config
         Log.level = config.logLevel
@@ -109,8 +107,18 @@ final class Engine {
                 tileAll()
             }
         case .movedOrResized(let el, _):
-            if Date() < suppressionEnd { return }
             if let id = store.id(for: el) {
+                // Filter out echoes of our own setFrame writes by matching
+                // the current frame against the last frame we tiled this
+                // window to. Anything else — including a 1-pixel nudge —
+                // schedules a debounced re-layout.
+                if let adapter = store.adapter(id),
+                   let state = store.state(id),
+                   let last = state.lastTiledFrame,
+                   let current = adapter.getFrame(),
+                   framesMatch(current, last) {
+                    return
+                }
                 schedulePendingMove(id)
             }
         case .minimized(let el, _):
@@ -444,7 +452,9 @@ final class Engine {
     }
 
     private func beginSuppressionWindow() {
-        suppressionEnd = Date().addingTimeInterval(0.4)
+        // No-op now that we use frame-match suppression in the move-event
+        // handler. Kept as a stub so the existing call sites in `tile`,
+        // `tileMonocle`, `tileThreePane` and `park` keep compiling.
     }
 
     // MARK: - Slot editing helpers
