@@ -224,15 +224,6 @@ final class Engine {
         AXUIElementCopyAttributeValue(element, kAXModalAttribute as CFString, &modalVal)
         if let modal = modalVal as? Bool, modal { return false }
 
-        // Reject windows whose title is missing or empty. The Finder
-        // desktop wallpaper window is the classic example: AXWindow role,
-        // no subrole, blank title, and it spans every screen. Real
-        // application windows have a non-empty title.
-        var titleRef: CFTypeRef?
-        let titleStatus = AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef)
-        let title = titleRef as? String ?? ""
-        if titleStatus != .success || title.isEmpty { return false }
-
         return true
     }
 
