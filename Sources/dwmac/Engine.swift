@@ -311,8 +311,9 @@ final class Engine {
         // Auto-fill empty slots from the hidden pool (FIFO).
         refillEmptySlots(state: s)
 
-        let params = Layout.Params(centerFraction: config.centerFraction,
-                                   sideFraction:   config.sideFraction,
+        let params = Layout.Params(leftFraction:   config.leftFraction,
+                                   centerFraction: config.centerFraction,
+                                   rightFraction:  config.rightFraction,
                                    outerGap:       config.outerGap)
         let plan = Layout.compute(axVisibleFrame: vf, params: params)
 
@@ -796,8 +797,9 @@ final class Engine {
         if slots.floats.contains(id) { return }
 
         let vf = ScreenSpace.axVisibleFrame(newScreen)
-        let params = Layout.Params(centerFraction: config.centerFraction,
-                                   sideFraction:   config.sideFraction,
+        let params = Layout.Params(leftFraction:   config.leftFraction,
+                                   centerFraction: config.centerFraction,
+                                   rightFraction:  config.rightFraction,
                                    outerGap:       config.outerGap)
         let plan = Layout.compute(axVisibleFrame: vf, params: params)
         let targetSlot = SlotLayout.slotForPoint(centerPt, plan: plan)

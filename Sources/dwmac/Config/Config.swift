@@ -6,10 +6,12 @@ enum ModifierToken: String, Codable, CaseIterable {
 
 struct Config: Codable {
     var modifier: [ModifierToken]
-    /// Fraction of screen width the center pane occupies.
+    /// Fraction of screen width the **left** pane occupies (wide-screen only).
+    var leftFraction: Double
+    /// Fraction of screen width the **center** pane occupies (wide-screen only).
     var centerFraction: Double
-    /// Fraction of screen width each side pane occupies.
-    var sideFraction: Double
+    /// Fraction of screen width the **right** pane occupies (wide-screen only).
+    var rightFraction: Double
     /// Outer gap from screen edge.
     var outerGap: Double
     /// Vertical gap (unused in 3-pane mode but kept for future).
@@ -29,8 +31,9 @@ struct Config: Codable {
 
     static let `default` = Config(
         modifier: [.control, .command],
+        leftFraction: 0.40,
         centerFraction: 0.50,
-        sideFraction: 0.40,
+        rightFraction: 0.40,
         outerGap: 16,
         innerGap: 6,
         workspaceCount: 9,
@@ -98,8 +101,9 @@ struct Config: Codable {
 
     func validated() -> Config {
         var c = self
+        c.leftFraction   = Geometry.clamp(c.leftFraction,   0.10, 0.60)
         c.centerFraction = Geometry.clamp(c.centerFraction, 0.20, 0.80)
-        c.sideFraction   = Geometry.clamp(c.sideFraction,   0.15, 0.50)
+        c.rightFraction  = Geometry.clamp(c.rightFraction,  0.10, 0.60)
         c.outerGap = Geometry.clamp(c.outerGap, 0, 64)
         c.innerGap = Geometry.clamp(c.innerGap, 0, 64)
         c.workspaceCount = Geometry.clamp(c.workspaceCount, 1, 9)
@@ -114,7 +118,8 @@ struct Config: Codable {
 extension Config {
     private enum DecodeKeys: String, CodingKey {
         case modifier
-        case centerFraction, sideFraction
+        case leftFraction, centerFraction, rightFraction
+        case sideFraction   // legacy: still accepted as a fallback for left/right
         case outerGap, innerGap
         case workspaceCount
         case floatBundleIDs, ignoreBundleIDs
@@ -127,7 +132,11 @@ extension Config {
         let def = Config.default
         modifier        = (try? c.decode([ModifierToken].self, forKey: .modifier)) ?? def.modifier
         centerFraction  = (try? c.decode(Double.self, forKey: .centerFraction))   ?? def.centerFraction
-        sideFraction    = (try? c.decode(Double.self, forKey: .sideFraction))     ?? def.sideFraction
+        // Legacy `sideFraction` is the fallback when only one side value
+        // was set in older config files; explicit left/right always win.
+        let legacySide  = (try? c.decode(Double.self, forKey: .sideFraction))     ?? def.leftFraction
+        leftFraction    = (try? c.decode(Double.self, forKey: .leftFraction))     ?? legacySide
+        rightFraction   = (try? c.decode(Double.self, forKey: .rightFraction))    ?? legacySide
         outerGap        = (try? c.decode(Double.self, forKey: .outerGap))         ?? def.outerGap
         innerGap        = (try? c.decode(Double.self, forKey: .innerGap))         ?? def.innerGap
         workspaceCount  = (try? c.decode(Int.self,    forKey: .workspaceCount))   ?? def.workspaceCount

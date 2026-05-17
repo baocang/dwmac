@@ -4,8 +4,9 @@ import XCTest
 
 final class LayoutTests: XCTestCase {
 
-    private let params = Layout.Params(centerFraction: 0.50,
-                                       sideFraction: 0.33,
+    private let params = Layout.Params(leftFraction: 0.33,
+                                       centerFraction: 0.50,
+                                       rightFraction: 0.33,
                                        outerGap: 8)
 
     func testZonesBasic() {
@@ -92,10 +93,27 @@ final class LayoutTests: XCTestCase {
     func testFractionsClamped() {
         var c = Config.default
         c.centerFraction = 0.9
-        c.sideFraction = 0.8
+        c.leftFraction = 0.8
+        c.rightFraction = 0.8
         c = c.validated()
         XCTAssertLessThanOrEqual(c.centerFraction, 0.80)
-        XCTAssertLessThanOrEqual(c.sideFraction, 0.50)
+        XCTAssertLessThanOrEqual(c.leftFraction, 0.60)
+        XCTAssertLessThanOrEqual(c.rightFraction, 0.60)
+    }
+
+    /// Per-side fractions produce independent widths.
+    func testAsymmetricSides() {
+        let vf = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let p = Layout.Params(leftFraction: 0.20,
+                              centerFraction: 0.50,
+                              rightFraction: 0.40,
+                              outerGap: 8)
+        let plan = Layout.compute(axVisibleFrame: vf, params: p)
+        // usable.width = 984. left = floor(984*0.2) = 196. right = floor(984*0.4) = 393.
+        XCTAssertEqual(plan.leftZone.width, 196)
+        XCTAssertEqual(plan.rightZone.width, 393)
+        XCTAssertEqual(plan.leftZone.minX, 8)
+        XCTAssertEqual(plan.rightZone.maxX, 992)
     }
 
     func testFloatsTrackSeparately() {

@@ -127,8 +127,9 @@ struct SlotLayout {
 /// they may overlap the center pane if widths sum to more than one.
 enum Layout {
     struct Params {
+        var leftFraction: Double
         var centerFraction: Double
-        var sideFraction: Double
+        var rightFraction: Double
         var outerGap: Double
     }
 
@@ -145,21 +146,24 @@ enum Layout {
                             width:  max(0, vf.width  - 2*outer),
                             height: max(0, vf.height - 2*outer))
 
-        let sideW   = floor(usable.width * params.sideFraction)
+        let leftW   = floor(usable.width * params.leftFraction)
         let centerW = floor(usable.width * params.centerFraction)
+        let rightW  = floor(usable.width * params.rightFraction)
+        // Center is centered on the usable area; left/right anchor to the
+        // outer edges. Their inner edges may overlap the center.
         let centerX = usable.origin.x + floor((usable.width - centerW) / 2)
 
         let left   = CGRect(x: usable.origin.x,
                             y: usable.origin.y,
-                            width: sideW,
+                            width: leftW,
                             height: usable.height)
         let center = CGRect(x: centerX,
                             y: usable.origin.y,
                             width: centerW,
                             height: usable.height)
-        let right  = CGRect(x: usable.maxX - sideW,
+        let right  = CGRect(x: usable.maxX - rightW,
                             y: usable.origin.y,
-                            width: sideW,
+                            width: rightW,
                             height: usable.height)
 
         return Computed(leftZone:   Geometry.floored(left),
